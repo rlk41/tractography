@@ -1,0 +1,83 @@
+SUBJECTS_DIR='/isilon/scratch/rlk41/data03';
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "preprocFSLDTI"
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "bedpostxFSLDTI"
+
+find $SUBJECTS_DIR -maxdepth 3 -type f -name 'commands.txt' -exec qsub -t 1:55 /home/rlk41/bin/FSLDTI/qsub_dti_fsl "parallelCommandFSLDTI" '{}' ';'
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "postprocFSLDTI"
+
+#qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "roisFSLDTI" $SUBJECTS_DIR
+
+
+for f in MR*; do 
+
+
+#if [ -d "$f/rois" ]; then
+#    echo "Deleteing ROIs" 
+#    rm -rf "$f/rois"
+#fi
+#
+#if [ -f $f/*.mat ]; then
+#    echo "Deleting xfms"
+#    rm "$f/*.mat"
+#fi
+
+
+echo "$f: flirt"
+echo "$f/diffusion/nodif_brain.nii.gz "
+echo "$FSLDIR/data/standard/MNI152_T1_2mm_brain_mask.nii.gz"
+echo "$f/nodif2MNI.mat"
+echo "$f/diffusion/nodif_brain_MNI.nii.gz"
+
+flirt -in $f/diffusion/nodif_brain.nii.gz -ref $FSLDIR/data/standard/MNI152_T1_2mm_brain_mask.nii.gz -omat $f/nodif2MNI.mat -out $f/diffusion/nodif_brain_MNI.nii.gz
+
+#flirt -in rfconn_atlas_150_2mm.nii -ref $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz -omat shen2MNI.mat -out rfconn_atlas_150_2mm.MNI.nii.gz
+
+
+echo "$f: convert_xfm"
+echo "$f/MNI2nodif.mat"
+echo "$f/nodif2MNI.mat"
+convert_xfm -omat $f/MNI2nodif.mat -inverse $f/nodif2MNI.mat
+cp $f/../shen2MNI.mat $f
+
+convert_xfm -omat $f/MNI2nodif.mat -inverse $f/nodif2MNI.mat
+convert_xfm -omat $f/MNI2shen.mat -inverse $f/shen2MNI.mat
+
+convert_xfm -omat shen2nodif.mat -concat $f/MNI2nodif.mat $f/shen2MNI.mat
+
+echo "$f/rois"
+mkdir $f/rois; 
+
+t1=.8;
+t2=1.2;
+
+for ff in $f/../rois.bin/*.bin.nii.gz; do
+b=$(basename $ff); 
+
+echo "basename: $b"; 
+echo "$f/diffusion/nodif_brain.nii.gz "
+echo "$ff "
+echo "$f/MNI2nodif.mat "
+echo "$f/rois/${b%nii.gz}nodif.nii.gz"
+
+
+flirt -ref $f/diffusion/nodif_brain.nii.gz -in $ff -applyxfm -init $f/shen2nodif.mat -out $f/rois/${b%nii.gz}nodif.nii.gz; 
+
+echo "$f/rois/${b%nii.gz}nodif.nii.gz"
+echo "$t1" 
+echo "$t2"
+echo "$f/rois/${b%nii.gz}nodif.thresh.nii.gz"
+
+fslmaths $f/rois/${b%nii.gz}nodif.nii.gz -thr $t1 -uthr $t2 $f/rois/${b%nii.gz}nodif.thresh.nii.gz; 
+
+done; 
+done; 
+
+
+#
+ find . -type d -name rois -exec rm -rf '{}' ';' 
+find MR* -type f -name "*.mat" -exec rm '{}' ';'
+
+qsub -l h_vmem=6G -t 1:$(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "genProbtrackx" $SUBJECTS_DIR
+

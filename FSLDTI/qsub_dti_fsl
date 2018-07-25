@@ -1,0 +1,125 @@
+#!/bin/bash
+
+#$ -cwd
+#$ -j y 
+#$ -S /bin/bash 
+#$ -V 
+#$ -m e -M rlk41@georgetown.edu
+#$ -N qSubSpmJob 
+#$ -l h_rt=720:00:00
+
+
+subDir=$SUBJECTS_DIR; 
+
+echo $SUBJECTS_DIR; 
+echo $subDir; 
+echo "$PBS_JOBID"
+
+switch=$1; 
+case "$switch" in  
+ "preprocFSLDTI" ) 
+    # qsub preprocFSLDTI <diffusionDir> 
+    module load fsl 
+
+    SUBJECTS_DIR=$subDir; #reinit after loading fsl 
+    dirs=($(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion'));
+    dir=${dirs[$SGE_TASK_ID-1]}; 
+
+    /home/rlk41/bin/FSLDTI/preprocFSLDTI "$dir" >> /isilon/scratch/rlk41/data03/$SGE_TASK_ID'_preproc_log.txt'
+    ;; 
+
+
+ "bedpostxFSLDTI" )
+    # bedpostx <diffusionDir>  
+    module load fsl
+    SUBJECTS_DIR=$subDir; #reinit after loading fsl 
+    dirs=($(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion'));
+    dir=${dirs[$SGE_TASK_ID-1]}; 
+    /home/rlk41/bin/FSLDTI/bedpostxFSLDTI "$dir"   >> /isilon/scratch/rlk41/data03/$SGE_TASK_ID'_bedpostx_log.txt'
+    ;; 
+
+
+ "parallelCommandFSLDTI" ) 
+
+    echo "switch: parallelCommandFSLDTI" 
+    #echo "Running $dir.bedpostX/commands.txt line(arg,line,SGE) $3 $line $SGE_TASK_ID "  
+    module load fsl 
+    SUBJECTS_DIR=$subDir; #reinit after loading fsl 
+    echo "$2" "$SGE_TASK_ID"
+    /home/rlk41/bin/FSLDTI/parallelCommandFSLDTI "$2" "$SGE_TASK_ID" >> /isilon/scratch/rlk41/data03/$SGE_TASK_ID'_paraCMD_log.txt'
+    ;;
+
+  "postprocFSLDTI" ) 
+
+    module load fsl
+    SUBJECTS_DIR=$subDir; #reinit after loading fsl 
+    dirs=($(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion'));
+    dir=${dirs[$SGE_TASK_ID-1]}; 
+    bedpostx_postproc.sh "$dir"   >> /isilon/scratch/rlk41/data03/$SGE_TASK_ID'_postproc_bedpostx_log.txt'
+
+    ;; 
+
+
+ "xfmsFSLDTI" ) 
+    echo "xfms" 
+    # INCOMPLETE
+    # put in file cleanup 
+    fa=$dir/dtifit_FA.nii.gz  
+    nodif_brain=$dir/nodif_brain.nii.gz
+    
+    seed=../masks.shen/fconn_atlas_150_2mm.nii
+    nodif_brain2seed=../MR704PRE.bedpostX/xfms/nodif_brain2seed.mat 
+    seed2nodif_brain=../MR704PRE.bedpostX/xfms/seed2nodif_brain.mat 
+
+    flirt -in $nodif_brain -ref $seed -omat $nodif_brain2seed -dof 12 
+    convert_xfm -omat $seed2nodif_brain -inverse $nodif_brain2seed
+    ;;
+  "roisFSLDTI" ) 
+    echo "switch: roisFSLDTI" 
+
+
+    module load fsl 
+    module load freesurfer
+    SUBJECTS_DIR=$2; #reinit after loading fsl 
+    dirs=($(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*'));
+    dir=${dirs[$SGE_TASK_ID-1]}; 
+    echo "SUBJECTS_DIR: $SUBJECTS_DIR"
+    echo "dir: $dir"
+    #probnotrigth
+    /home/rlk41/bin/FSLDTI/roisFSLDTI $(basename $dir) $2 >> /isilon/scratch/rlk41/data03/$SGE_TASK_ID'_roisFSLDTI_log.txt'
+    ;;
+  "genProbtrackx" ) 
+    echo "genProbtrackx" 
+    module load matlab
+    SUBJECTS_DIR=$subDir; #reinit after loading fsl 
+    dirs=($(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' -exec basename '{}' ';'));
+    dir=${dirs[$SGE_TASK_ID-1]}; 
+    echo "SUBJECT_DIR: " $SUBJECTS_DIR;
+    echo "dir: " $dir;
+    echo "2nd INPUT: " $2;
+    echo "SGE_TASK_ID: " $SGE_TASK_ID; 
+    matlab -nodisplay -nodesktop -nosplash -r "subID='$dir'; subsDir='$2'; run('/home/rlk41/bin/FSLDTI/genProbtrackxFSLDTI.m')">> /isilon/scratch/rlk41/data03/$SGE_TASK_ID'_genProbtrackxFSLDTI_log.txt'
+    ;;
+  "parallelProbtrackx" ) 
+    echo "running Probrackx" 
+#NOT CURRENLT USED
+    module load fsl
+    SUBJECTS_DIR=$subDir; #reinit after loading fsl     
+    dir=${dirs[$SGE_TASK_ID-1]};
+    #sub=$(basename $dir); 
+    dirs=($(wc -l < /isilon/scratch/rlk41/SpeechTBT/freesurfer/$sub/probtrackx_commands.txt));
+    # do we use? 
+    parallelCommandFSLDTI "$dir.bedpostX/commands.txt" "$3"
+    ;;
+esac
+
+
+echo "Done" 
+
+
+# Clean things up
+#echo "bedpostx_postproc begin `date`"
+#bedpostx_postproc.sh ${datadir}
+#echo "bedpostx_postproc end `date`"
+#echo
+

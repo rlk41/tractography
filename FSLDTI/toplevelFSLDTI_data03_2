@@ -1,0 +1,170 @@
+# you will want to get your T2 and T1 into the same space before analysis. I used rigidbody 
+# xfm to get T2 into T1 space as I had already preprocessed the T1. Get these initial files 
+# into same space so files produced sa a result of rpeprocessing dont individually need to 
+# be transformed to common space. rigid body first 6 parameters: translation, rotation. 
+
+# run freesurfer: freesurfer/qsub_arrayJob...
+
+# if all you need fsl for is preprocessing you might be able to only use the "preprocFSLDTI",
+# "bedpostxFSLDTI", "parallelCommandFSLDTI", and "postprocFSLDTI" switches. Shown in lines 
+# below this. Then use the mrtrix-python/mrtrix.py file or 
+
+
+
+
+SUBJECTS_DIR='/isilon/scratch/rlk41/data03';
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "preprocFSLDTI"
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "bedpostxFSLDTI"
+
+find $SUBJECTS_DIR -maxdepth 3 -type f -name 'commands.txt' -exec qsub -t 1:55 /home/rlk41/bin/FSLDTI/qsub_dti_fsl "parallelCommandFSLDTI" '{}' ';'
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "postprocFSLDTI"
+
+#qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "roisFSLDTI" $SUBJECTS_DIR
+
+##
+find mask.localizer.all -type f -name *.nii -exec fslreorient2std '{}' '{}' ';' 
+
+
+for f in MR*; do 
+b=$(basename $f);
+n=${b:2:4}
+echo $f 
+echo $n
+echo $f/mask.localizer
+
+mkdir $f/mask.localizer; 
+find mask.localizer.all -type f -name $n*.nii.gz -exec cp '{}' $f/mask.localizer ';'; 
+#find ../masks.localizers -type f -name $n*.nii.gz -exec echo '{}' $f/masks.localizers ';'; 
+done 
+
+
+
+#####################################
+
+#run on compute node 
+SUBJECTS_DIR='/isilon/scratch/rlk41/data03'
+
+for f in MR*; do 
+
+
+echo "$f: flirt"
+echo "$f/diffusion/nodif_brain.nii.gz "
+echo "$FSLDIR/data/standard/MNI152_T1_2mm_brain_mask.nii.gz"
+echo "$f/nodif2MNI.mat"
+echo "$f/diffusion/nodif_brain_MNI.nii.gz"
+
+flirt -in $f/diffusion/nodif_brain.nii.gz -ref $FSLDIR/data/standard/MNI152_T1_2mm_brain_mask.nii.gz -omat $f/nodif2MNI.mat -out $f/diffusion/nodif_brain_MNI.nii.gz
+
+#flirt -in rfconn_atlas_150_2mm.nii -ref $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz -omat shen2MNI.mat -out rfconn_atlas_150_2mm.MNI.nii.gz
+
+echo "$f: convert_xfm"
+echo "$f/MNI2nodif.mat"
+echo "$f/nodif2MNI.mat"
+convert_xfm -omat $f/MNI2nodif.mat -inverse $f/nodif2MNI.mat
+cp $f/../shen2MNI.mat $f
+
+convert_xfm -omat $f/MNI2nodif.mat -inverse $f/nodif2MNI.mat
+convert_xfm -omat $f/MNI2shen.mat  -inverse $f/shen2MNI.mat
+convert_xfm -omat $f/shen2nodif.mat -concat $f/MNI2nodif.mat $f/shen2MNI.mat
+
+flirt -ref $f/diffusion/nodif_brain.nii.gz -in $f/../rfconn_atlas_150_2mm.nii.gz -applyxfm -init $f/shen2nodif.mat -out $f/shen.dti.nii.gz; 
+
+echo "$f/rois"
+mkdir $f/rois; 
+
+END=278; 
+for t in $( seq 1 $END); do 
+
+#t1=$( echo " $t - .2 " | bc );
+#t2=$( echo " $t + .2 " | bc );
+
+printf -v j "%03d" $t
+input=$(echo $SUBJECTS_DIR/rois.bin/$j*.nii.gz);
+b=$(basename $input); 
+
+echo "MR:         $f" 
+echo "ROI:        $j"; 
+echo "basename:   $b"
+echo "input:      $input" 
+echo "nodif:      $f/diffusion/nodif_brain.nii.gz "
+echo "xfm:        $f/shen2nodif.mat"
+echo "ROI.nodif:  $f/rois/${b%nii.gz}nodif.nii.gz"
+echo "ROI.thresh: $f/rois/${b%nii.gz}nodif.thresh.nii.gz"
+echo "ROI.bin:    $f/rois/${b%nii.gz}nodif.thresh.bin.nii.gz"
+
+flirt -ref $f/diffusion/nodif_brain.nii.gz -in $input -applyxfm -init $f/shen2nodif.mat -out $f/rois/${b%nii.gz}nodif.nii.gz; 
+fslmaths $f/rois/${b%nii.gz}nodif.nii.gz -thr .01  $f/rois/${b%nii.gz}nodif.thresh.nii.gz; 
+#fslmaths $f/rois/${b%nii.gz}nodif.nii.gz -thr .8 -uthr 1.2 $f/rois/${b%nii.gz}nodif.thresh.nii.gz; 
+fslmaths $f/rois/${b%nii.gz}nodif.thresh.nii.gz -bin $f/rois/${b%nii.gz}nodif.thresh.bin.nii.gz; 
+
+rm $f/rois/${b%nii.gz}nodif.nii.gz; 
+rm $f/rois/${b%nii.gz}nodif.thresh.nii.gz; 
+
+
+done; 
+done; 
+
+
+for f in MR*; do 
+  mkdir $f/mask.localizer.flirt ;
+  echo $f; 
+  echo $f/diffusion/nodif_brain.nii.gz;
+  echo $f/shen2nodif.mat;
+  echo $f/mask.localizer.flirt/${b%nii.gz}nodif.nii.gz; 
+  echo $f/mask.localizer.flirt/${b%nii.gz}nodif.thresh.nii.gz; 
+  echo $f/mask.localizer.flirt/${b%nii.gz}nodif.thresh.bin.nii.gz; 
+  for ff in $f/mask.localizer/*.nii.gz; do 
+    b=$(basename $ff); 
+    echo "    " $b 
+    flirt -ref $f/diffusion/nodif_brain.nii.gz -in $ff -applyxfm -init $f/shen2nodif.mat -out $f/mask.localizer.flirt/${b%nii.gz}nodif.nii.gz; 
+    fslmaths $f/mask.localizer.flirt/${b%nii.gz}nodif.nii.gz -thr .01  $f/mask.localizer.flirt/${b%nii.gz}nodif.thresh.nii.gz; 
+    fslmaths $f/mask.localizer.flirt/${b%nii.gz}nodif.thresh.nii.gz -bin $f/mask.localizer.flirt/${b%nii.gz}nodif.thresh.bin.nii.gz; 
+    rm $f/mask.localizer.flirt/${b%nii.gz}nodif.nii.gz; 
+    rm $f/mask.localizer.flirt/${b%nii.gz}nodif.thresh.nii.gz;  
+done; 
+done;
+
+
+
+#####################
+
+for ff in $SUBJECTS_DIR/MR*; do 
+    rm $ff/rois.txt; 
+    rm $ff/targets.txt; 
+    for f in $ff/rois/*.nii.gz; do 
+	
+        echo "$f" >> $ff/rois.txt; 
+        echo "$f" >> $ff/targets.txt; 
+    done; 
+    for f in $ff/mask.localizer.flirt/*bin.nii.gz; do 
+        echo "$f" >> $ff/rois.txt; 
+        echo "$f" >> $ff/targets.txt; 
+    done; 
+    wc $ff/rois.txt; 
+    wc $ff/targets.txt; 
+done 
+
+###################
+
+for f in MR*; do rm -rf $f/results; done
+for f in MR*; do rm $f/probtrackx_commands.txt; done 
+
+qsub -l h_vmem=6G -t 1:$(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' -exec basename '{}' ';' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "genProbtrackx" $SUBJECTS_DIR
+
+for f in MR*; do 
+    ls $f/rois | wc; 
+    ls $f/mask.localizer.flirt | wc; 
+    wc $f/rois.txt; 
+    wc $f/targets.txt; 
+    wc $f/probtrackx_commands.txt; 
+done       
+
+for sub in MR*; do 
+    echo $sub;
+    qsub -l h_vmem=10G -t 1:$(wc -l < $SUBJECTS_DIR/$sub/probtrackx_commands.txt) /home/rlk41/bin/FSLDTI/parallelProbtrackxFSLDTI $SUBJECTS_DIR/$sub/probtrackx_commands.txt >> $SUBJECTS_DIR/$sub'_runProbtrackxFSLDTI_log.txt';
+done 
+
+
+

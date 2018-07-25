@@ -1,0 +1,9 @@
+#!/bin/bash 
+
+# run commands.txt line 
+# usage : 
+#    parallelCommandFSLDTI <diffusionDir> <line> 
+
+echo "processing line $2 in $1" 
+
+$(sed $2"q;d" $1 )

@@ -1,0 +1,14 @@
+#!/bin/bash
+#$ -cwd
+#$ -j y 
+#$ -S /bin/bash 
+#$ -V 
+#$ -m e -M rlk41@georgetown.edu
+#$ -N qSubSpmJob 
+#$ -l h_vmem=6G
+#$ -l h_rt=720:00:00
+
+module load fsl
+ 
+$(sed $SGE_TASK_ID"q;d" $1 )
+

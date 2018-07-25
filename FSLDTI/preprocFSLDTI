@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# script produces: 
+#    data.nii.gz (eddy corrected dti) 
+#    nodif_brain_mask
+#    rotated bvals bvecs 
+# usage: 
+#    fslPreprocDTI /MR####/diffusion 
+# Files required:
+#    dti
+#    bvals bvecs 
+             
+
+
+if [ $# -eq 0 ]; then
+    echo "No arguments supplied"
+else
+    dir=$1; 
+fi
+
+cd $dir; 
+echo $dir; 
+
+fslroi "dti" "nodif" 0 1;
+bet2 "nodif" "nodif_brain" -m -f .25;
+eddy_correct "dti" "dti_ecc" 0;
+bash fdt_rotate_bvecs "bvecs" "rot_bvecs" "dti_ecc.ecclog";
+
+
+cp "bvecs" "bvecs.backup";
+cp "bvals" "bvals.backup";
+
+
+mv "bvecs" "old_bvecs";
+mv "rot_bvecs" "bvecs";
+
+dtifit -k "dti_ecc" -o ./dtifit -m "nodif_brain_mask" -r "bvecs" -b "bvals";
+
+ln -s "dti_ecc.nii.gz" "data.nii.gz";
+
+
+#fslroi "$1/dti" "$1/nodif" 0 1;
+#bet2 "$1/nodif" "$1/nodif_brain" -m -f .25;
+#eddy_correct "$1/dti" "$1/dti_ecc" 0;
+#bash fdt_rotate_bvecs "$1/bvecs" "$1/rot_bvecs" "$1/dti_ecc.ecclog";
+
+
+#cp "$1/bvecs" "$1/bvecs.backup";
+#cp "$1/bvals" "$1/bvals.backup";
+
+
+#mv "$1/bvecs" "$1/old_bvecs";
+#mv "$1/rot_bvecs" "$1/bvecs";
+
+#dtifit -k "$1/dti_ecc" -o ./dtifit -m "$1/nodif_brain_mask" -r "$1/bvecs" -b "$1/bvals";
+
+#ln -s "$1/dti_ecc.nii.gz" "$1/data.nii.gz";
+
+

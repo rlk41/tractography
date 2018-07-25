@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# script produces: 
+#    diffusion.bedpostX dir
+#    slices
+#    commands.txt
+# usage: 
+#    bedpostx /MR####/diffusion 
+# Files required:
+#    dti
+#    bvals bvecs 
+
+
+if [ $# -eq 0 ]
+  then
+    echo "No arguments supplied"
+fi
+
+datadir=$1
+
+
+# Estimation parameters
+nfibres=2
+fudge=1
+burnin=1000
+njumps=1250
+sampleevery=25
+
+bedpostx_datacheck $datadir
+
+
+#periods
+mkdir -p $datadir.bedpostX
+mkdir -p $datadir.bedpostX/diff_slices
+mkdir -p $datadir.bedpostX/logs
+mkdir -p $datadir.bedpostX/logs/pid_${$}
+mkdir -p $datadir.bedpostX/xfms
+mkdir -p $datadir.bedpostX/logs/monitor
+
+echo "bedpostx_preproc begin `date`"
+bedpostx_preproc.sh ${datadir} 0
+echo "bedpostx_preproc end `date`"
+echo
+
+nslices=`${FSLDIR}/bin/fslval $datadir/dti_ecc dim3`
+[ -f $datadir.bedpostX/commands.txt ] && rm $datadir.bedpostX/commands.txt
+
+slice=0
+while [ $slice -lt $nslices ]
+do
+    slicezp=`$FSLDIR/bin/zeropad $slice 4`
+    if [ -f $datadir.bedpostX/diff_slices/data_slice_$slicezp/dyads2.nii.gz ];then
+        echo "slice $slice has already been processed"
+    else
+        echo "${FSLDIR}/bin/bedpostx_single_slice.sh $datadir $slice --nfibres=$nfibres --fudge=$fudge --burnin=$burnin --njumps=$njumps --sampleevery=$sampleevery --model=1">> $datadir.bedpostX/commands.txt
+    fi
+    slice=$(($slice + 1))
+done
+
+
+
+
+
+# parallel processing
+#echo "parallel processing begin `date`"
+
+#####################################################
+#path needs to be adjusted or parallelization applied 
+#change number of cpus in run_parallel.m if using 
+########################################################
+#matlab -nodisplay -nodesktop -r "run $DTI_PIPELINE_DIR/run_parallel.m" 
+#qsub -t 1-$(cat $datadir.bedpostX/commands.txt | wc -l) $DTI_PIPELINE_DIR/run_parallel_qsub.sh $datadir.bedpostX/commands.txt
+
+#echo "parallel processing end `date`"
+#echo
+
+# Clean things up
+#echo "bedpostx_postproc begin `date`"
+#bedpostx_postproc.sh ${datadir}
+#echo "bedpostx_postproc end `date`"
+#echo

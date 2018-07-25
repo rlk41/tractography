@@ -1,0 +1,192 @@
+#$(find $SUBJECTS_DIR -type d -name 'diffusion' | wc -l)
+#for f in MR*; do echo $f; mkdir $f/mask.localizer; find /media/richard/camcan/Projects/SpeechTBT/masks.localizers -type f -name "${f:2}*" -exec cp '{}' ~/Desktop/freesurfer/$f/mask.localizer ';';  done
+#for f in MR*; do echo $f; find /media/richard/camcan/Projects/SpeechTBT/data02/$f -type d -name "diffusion" -exec cp -r '{}' ~/Desktop/freesurfer/$f/ ';';  done
+SUBJECTS_DIR='/isilon/scratch/rlk41/freesurfer2';
+#SUBJECTS_DIR='/isilon/scratch/rlk41/SpeechTBT/freesurfer';
+#SUBJECTS_DIR='~/Desktop/freesurfer';
+#preprocess
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) ~/bin/FSLDTI/qsub_dti_fsl "preprocFSLDTI"
+
+#bedpostx
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) ~/bin/FSLDTI/qsub_dti_fsl "bedpostxFSLDTI"
+
+#single_slice
+find $SUBJECTS_DIR -maxdepth 2 -type d -name 'commands.txt' -exec qsub -t 1:54 ~/bin/qsub_dti_fsl "parallelCommandFSLDTI" '{}' ';'
+
+
+#cleanup
+qsub 1:subjects bedpostxPostprocFSLDTI 
+
+#flirt 
+qsub 1:subjects flirtFSLDTI 
+
+#genprobtrackx
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -type d -name 'MR*' | wc -l) ~/bin/FSLDTI/qsub_dti_fsl "genProbtrackxFSLDTI"
+
+#probtrackx
+for sub in subjects; do 
+    qsub -t 1:$(wc -l < /isilon/scratch/rlk41/SpeechTBT/freesurfer/$sub/probtrackx_commands.txt) ~/bin/FSLDTI/parallelProbtrackxFSLDTI /isilon/scratch/rlk41/SpeechTBT/freesurfer/$sub/probtrackx_commands.txt 
+done 
+sub='MR1106';
+qsub -t 1:$(wc -l < /isilon/scratch/rlk41/SpeechTBT/freesurfer/$sub/probtrackx_commands.txt) ~/bin/FSLDTI/parallelProbtrackxFSLDTI /isilon/scratch/rlk41/SpeechTBT/freesurfer/$sub/probtrackx_commands.txt 
+
+
+
+
+
+
+#for f in MR*; do echo $f; mkdir $f/mask.localizer; find /media/richard/camcan/Projects/SpeechTBT/masks.localizers -type f -name "${f:2}*" -exec cp '{}' ~/Desktop/freesurfer/$f/mask.localizer ';';  done
+#for f in MR*; do echo $f; find /media/richard/camcan/Projects/SpeechTBT/data02/$f -type d -name "diffusion" -exec cp -r '{}' ~/Desktop/freesurfer2/$f/ ';';  done
+
+
+SUBJECTS_DIR='~/Desktop/freesurfer';
+
+find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' -exec preprocFSLDTI '{}' ';'
+
+###################################################################
+SUBJECTS_DIR='/isilon/scratch/rlk41/freesurfer2';
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "preprocFSLDTI"
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "bedpostxFSLDTI"
+
+find $SUBJECTS_DIR -maxdepth 3 -type f -name 'commands.txt' -exec qsub -t 1:55 /home/rlk41/bin/FSLDTI/qsub_dti_fsl "parallelCommandFSLDTI" '{}' ';'
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 2 -type d -name 'diffusion' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "postprocFSLDTI"
+
+qsub -l h_vmem=3G -t 1:$(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "roisFSLDTI" $SUBJECTS_DIR
+
+qsub -l h_vmem=6G -t 1:$(find $SUBJECTS_DIR -maxdepth 1 -type d -name 'MR*' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "genProbtrackx" $SUBJECTS_DIR
+
+#find . -name probtrackx_commands.txt -exec sed -i -r 's#/./#/#g' '{}' ';' 
+#find /isilon/scratch/rlk41/freesurfer2 -type d -name rois -exec cp -r '{}' '{}'.backup ';' 
+
+#module load afni 
+#for f in MR*; do 
+#    for ff in $f/rois/*.nii*; do 
+#        echo $ff; 
+#        3dresample -master $f/diffusion/dti_ecc.nii.gz -prefix ${ff%.nii*}.resampled.nii.gz -input $ff
+#    done
+#done 
+
+find . -type f -name rois.txt -exec mv '{}' '{}'.backup ';' 
+find . -type f -name targets.txt -exec mv '{}' '{}'.backup ';' 
+
+for ff in /isilon/scratch/rlk41/freesurfer2/MR*; do 
+    for f in $ff/rois/*.nii*; do 
+        echo "$f" >> $ff/rois.txt; 
+    done; 
+done 
+
+#for f in MR*; do cp $f/rois.txt $f/targets.txt; done 
+
+#find . -type f -name probtrackx_commands.txt -exec rm '{}' ';' 
+
+#qsub -l h_vmem=6G -t 1:$(find $SUBJECTS_DIR -type d -name 'MR*' -exec basename '{}' ';' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "genProbtrackx" $SUBJECTS_DIR
+
+#find . -name probtrackx_commands.txt -exec sed -i -r 's#/./#/#g' '{}' ';' 
+
+for sub in MR*; do 
+    echo $sub;
+    qsub -l h_vmem=10G -t 1:$(wc -l < /isilon/scratch/rlk41/freesurfer2/$sub/probtrackx_commands.txt) /home/rlk41/bin/FSLDTI/parallelProbtrackxFSLDTI /isilon/scratch/rlk41/freesurfer2/$sub/probtrackx_commands.txt >> /isilon/scratch/rlk41/freesurfer2/$sub'_runProbtrackxFSLDTI_log.txt';
+done 
+
+
+
+#resample, update rois.txt targets.txt, and genprobtrackx 
+for f in MR*; do echo $f; for ff in $f/mask.localizer/*; do 3dresample -master $f/diffusion.bedpostX/merged_f1samples.nii.gz -prefix ${ff%.nii}.resampled.nii -input $ff;  done; done 
+
+module load afni 
+for f in MR*; do 
+    for ff in $f/rois.backup/*.nii.gz; do 
+        echo $ff; 
+        3dresample -master $f/diffusion.bedpostX/merged_f1samples.nii.gz -prefix ${ff%.nii.gz}.resampled.nii.gz -input $ff
+    done
+done 
+
+for f in MR*; do 
+    for ff in $f/rois.backup/*resampled.nii.gz; do 
+        echo $ff; 
+        cp $ff $f/rois; 
+    done
+done 
+
+find . -type f -name rois.txt -exec mv '{}' '{}'.loc.resamp.inflate.backup ';' 
+find . -type f -name targets.txt -exec mv '{}' '{}'.loc.resamp.inflate.backup ';' 
+
+for ff in /isilon/scratch/rlk41/freesurfer2/MR*; do 
+    for f in $ff/rois/*.nii.gz; do 
+        echo "$f" >> $ff/rois.txt; 
+    done; 
+done 
+
+#for f in MR*; do cp $f/rois.txt $f/targets.txt; done 
+
+#find . -type f -name probtrackx_commands.txt -exec rm '{}' ';' 
+
+#qsub -l h_vmem=6G -t 1:$(find $SUBJECTS_DIR -type d -name 'MR*' -exec basename '{}' ';' | wc -l) /home/rlk41/bin/FSLDTI/qsub_dti_fsl "genProbtrackx" $SUBJECTS_DIR
+find . -type d -name rois -exec mv '{}' '{}'.backup3 ';' 
+
+for f in MR*; do 
+echo $f; 
+mkdir $f/rois; 
+
+for ff in $f/mask.localizer/*inflate_GM+tlrc.nii.gz; do 
+
+cp $ff $f/rois;  
+done; 
+done; 
+
+find . -type f -name rois.txt -exec rm '{}' ';' 
+find . -type f -name targets.txt -exec rm '{}' ';' 
+
+for ff in /isilon/scratch/rlk41/freesurfer2/MR*; do 
+    for f in $ff/rois/*.nii*; do 
+        echo "$f" >> $ff/rois.txt; 
+    done; 
+done 
+ 
+for f in MR*; do echo $f; cp $f/rois.txt $f/targets.txt; done     
+
+#################################################################
+
+
+find . -type f -name probtrackx_commands.txt -exec cat '{}' ';' 
+
+#####################
+for ff in MR*; do 
+cd $ff/mask.localizer; 
+
+for f in *.resampled.nii; do
+echo "inflate: " $f; 
+3dROIMaker -inset $f -inflate 100 -prefix ${f%nii}inflate; 
+done
+
+for f in *resampled.inflate*BRIK; do 
+echo 'convert: ' $f;
+3dAFNItoNIFTI -prefix ${f%.BRIK}.nii.gz $f;
+done  
+cd ../..; 
+done 
+
+
+for f in MR*; do 
+flirt -in ../MR1103/diffusion.bedpostX/merged_f1samples.nii.gz -refvol /usr/local/-prefix ${f%nii.gz}resampled.nii.gz -in $f/diffusion.bedpostx ;  
+
+flirt -refvol $MNI -in 
+
+
+
+done
+
+
+for f in MR*; do
+for ff in $f/rois.backup/*.label; do 
+echo $ff; 
+mri_label2vol --label $ff --temp $f/diffusion.bedpostX/merged_f1samples.nii.gz --reg $f/register.dat --o ${ff%.label}.lab2vol.nii.gz; 
+done; 
+done; 
+
+
+
+
+

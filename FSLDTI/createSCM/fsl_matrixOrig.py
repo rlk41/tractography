@@ -1,0 +1,137 @@
+import numpy as np
+#import matplotlib as mpl
+import matplotlib.pyplot
+#import matplotlib.pyplot as plt
+#plt = mpl.pyplot
+import os
+from numpy import genfromtxt
+from readTable import readTable
+from numpy import genfromtxt
+import pickle
+
+
+def collapse_probtrack_results(waytotal_file, matrix_file):
+    with open(waytotal_file) as f:
+        waytotal = int(f.read())
+    data = genfromtxt(matrix_file, delimiter='  ')
+    collapsed = data.sum(axis=0) / waytotal * 100.
+    return collapsed
+
+#dataDir='/home/richard/Desktop/data03/'
+dataDir='/media/richard/019147a8-ab26-4b03-a224-8cc72deaa00c/data03/'
+tbl = '/home/richard/bin/FSLDTI/Group_seg150_BAindexing_setA.txt'
+
+subNums=['1103','1106','1126','1134','1135','1136','1137','1139','1140',
+         '1142','1144','1145','1146','1150','1151','1153','1154','1155']
+roiTbl = readTable(tbl)
+
+for subNum in subNums:
+    subID='MR' + subNum
+    print('Running: ' + subID)
+
+    os.chdir(dataDir + subID)
+
+
+
+    #matrix_template = '/home/richard/Desktop/freesurfer2/MR'+ subNum + '/results/' + subNum + '_{roi}/matrix_seeds_to_all_targets'
+    #s.replace('gz.resampled.inflate_GM+tlrc.nii','').replace('/isilon/scratch/rlk41/freesurfer2/MR' + subNum +  '/rois/' + subNum + '_', '')
+
+    #subsPath = '/home/richard/Desktop/data03/'
+    #subsDirs = [f for f in os.listdir(subsPath) if isfile(join(subsPath, f))]
+
+    #print(subsDirs)
+
+
+
+    processed_seed_list =   [ os.path.basename(s)
+                            for s in open('rois.txt').read().split('\n')
+                            if s]
+
+    all         = [i for i in range(len(processed_seed_list)) if processed_seed_list[i]]
+    localizer   = [i for i in range(len(processed_seed_list)) if processed_seed_list[i].startswith(subNum)]
+    shen2013    = [i for i in range(len(processed_seed_list)) if not processed_seed_list[i].startswith(subNum)]
+    sts         = [i for i in range(len(processed_seed_list)) if not processed_seed_list[i].startswith(subNum)]
+
+    lists = [all, localizer, shen2013]
+    listNames = ['Shen2013 and Localizer', 'Localizer', 'Shen2013']
+
+
+    N = len(processed_seed_list)
+    conn = np.zeros((N, N))
+    rois=[]
+    idx = 0
+
+
+
+    for roi in processed_seed_list:
+        matrix_file = dataDir +'MR'+subNum+'/results/' + roi.replace('.gz','').replace('/isilon/scratch/rlk41/data03/MR1106/rois','') + '/matrix_seeds_to_all_targets'     #matrix_template.format(roi=roi.replace('.gz',''))
+        waytotal_file = os.path.join(matrix_file.replace('matrix_seeds_to_all_targets',''), 'waytotal')
+        rois.append(roi)
+        try:
+            conn[idx, :] = collapse_probtrack_results(waytotal_file, matrix_file)
+        except OSError:
+            pass
+        idx += 1
+
+
+
+
+    for i in range(len(lists)):
+
+        mask = np.zeros(N, dtype=int)
+        mask[lists[i]] = 1
+
+        #connOut = conn[np.ix_(mask,mask)]
+        connOut = conn[np.ix_(lists[i],lists[i])]
+
+        if i == 0:
+            labs = [processed_seed_list[ll].replace(subNum+'_','').replace('.nodif.thresh.bin.nii.gz','').replace('.bin','') for ll in lists[i] ]
+
+            connSave = {'conn':connOut, 'labs':labs}
+
+            #connSave.conn = connOut
+            #connSave.list = lists[i]
+            saveFile = open(dataDir+'saves/' + 'MR'+subNum+'.pkl','wb')
+            pickle.dump(connSave, saveFile)
+            saveFile.close()
+
+
+    # figure plotting
+        fig = matplotlib.pyplot.figure(figsize=(12, 9), dpi=100,)
+        ax = fig.add_subplot(111)
+        cax = ax.matshow(connOut, interpolation='nearest', )
+        cax.set_cmap('hot')
+        #caxes = cax.get_axes()
+
+        # set number of ticks
+        #caxes.set_xticks(range(len(new_order)))
+        #caxes.set_yticks(range(len(new_order)))
+
+        # label the ticks
+        #if
+        #caxes.set_xticklabels(new_order, rotation=90)
+        #caxes.set_yticklabels(new_order, rotation=0)
+        if listNames[i] == 'Localizer':
+            labs = [processed_seed_list[ll].replace(subNum+'_','').replace('.nodif.thresh.bin.nii.gz','') for ll in lists[i] ]
+            matplotlib.pyplot.xticks(range(len(lists[i])), labs, rotation='vertical', fontsize=10)
+            matplotlib.pyplot.yticks(range(len(lists[i])), labs, rotation='horizontal', fontsize=10)        # axes labels
+        #caxes.set_xlabel('Target ROI', fontsize=20)
+        #caxes.set_ylabel('Seed ROI', fontsize=20)
+        matplotlib.pyplot.xlabel('Target ROI', fontsize=15)
+        matplotlib.pyplot.ylabel('Seed ROI', fontsize=15)
+
+    # Colorbar
+        cbar = fig.colorbar(cax)
+        #cbar.set_label('% of streamlines from seed to target', rotation=-90, fontsize=20)
+
+        # title text
+        #title_text = ax.set_title('Structural Connectivity with Freesurfer Labels & ProbtrackX2',
+        #    fontsize=26)
+        #title_text.set_position((.5, 1.10))
+
+        #fig.show()
+        fig.savefig(dataDir+'MR' + subNum + '/connectome_fsl_'+listNames[i]+'.png')
+        fig.savefig(dataDir+'plots/' + 'MR'+subNum + '_connectome_fsl_'+listNames[i]+'.png')
+        matplotlib.pyplot.close()
+
+    #input("Press Enter to continue...")

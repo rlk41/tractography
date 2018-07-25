@@ -1,0 +1,64 @@
+#
+#mri_label2vol --seg aparc+aseg.mgz --regheader rawavg.mgz --o aparc+aseg-in-rawavg.mgz --temp aparc+aseg.mgz
+#b. mri_binarize --i aparc+aseg-in-rawavg.mgz --match 1022 --o lh-postcentral.nii
+#
+#mri_convert --in_type mgz --out_type nii --out_orientation RAS roi.mgz roi.nii
+#mri_label2vol 
+#  --label lh-avg_central_sulcus.label 
+#  --temp f.nii.gz 
+#  --reg register.dat 
+#  --fillthresh .5 
+#  --o cent-lh.nii.gz
+#########################################3
+# freeview 
+#-v mri/orig.mgz 
+#mri/aparc+aseg.mgz:colormap=lut:opacity=0.4 
+#-f su
+#rf/lh.white:annot=aparc.annot
+#
+#
+#############
+
+#SUBJECTS_DIR='/isilon/scratch/rlk41/SpeechTBT/freesurfer';
+#subID='MR1106';
+
+subID=$1; 
+SUBJECTS_DIR=$2; 
+echo $SUBJECTS_DIR
+OUTDIR="$SUBJECTS_DIR/$subID"; 
+
+mkdir "$OUTDIR/rois";
+
+mri_annotation2label --subject $subID --hemi lh --outdir $OUTDIR/rois --annotation aparc.a2009s
+mri_annotation2label --subject $subID --hemi rh --outdir $OUTDIR/rois --annotation aparc.a2009s
+
+tkregister2 --mov $OUTDIR/diffusion.bedpostX/merged_f1samples.nii.gz --noedit --s $subID --regheader --reg $OUTDIR/register.dat
+
+for f in $OUTDIR/rois/*.label; do 
+    echo "$f" >> $OUTDIR/labels.txt; 
+done;  
+
+while read p; do 
+    #mri_label2vol --label $p --temp $OUTDIR/mri/rawavg.mgz --subject $subID --hemi lh --o ${p%.label}.nii.gz --proj frac 0 1 .1 --fillthresh .3 --reg $OUTDIR/register.dat; 
+mri_label2vol --label $p --temp $OUTDIR/diffusion.bedpostX/merged_f1samples.nii.gz --subject $subID --hemi lh --o ${p%.label}.nii.gz --proj frac 0 1 .1 --fillthresh .3 --reg $OUTDIR/register.dat;
+done < $OUTDIR/labels.txt; 
+
+ln -s $OUTDIR/masks.localizer/* $OUTDIR/rois/
+
+for f in $OUTDIR/rois/*.nii*; do 
+    echo "$f" >> $OUTDIR/rois.txt; 
+done; 
+
+cp $OUTDIR/rois.txt $OUTDIR/targets.txt
+mkdir -p $OUTDIR/anat
+
+mri_binarize --i $OUTDIR/mri/aparc+aseg.mgz --ventricles --o $OUTDIR/anat/ventricles.nii.gz
+mri_binarize --i $OUTDIR/mri/aparc+aseg.mgz --match 2 --o $OUTDIR/anat/wm.lh.nii.gz
+mri_binarize --i $OUTDIR/mri/aparc+aseg.mgz --match 41 --o $OUTDIR/anat/wm.rh.nii.gz
+
+ls -1 $OUTDIR/mri/wm* > $OUTDIR/waypoints.txt
+
+mri_convert $SUBJECTS_DIR/$subID/mri/rawavg.mgz $SUBJECTS_DIR/$subID/anat/str.nii.gz
+mri_convert $SUBJECTS_DIR/$subID/mri/orig.mgz $SUBJECTS_DIR/$subID/anat/fs.nii.gz
+
+
